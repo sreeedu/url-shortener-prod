@@ -4,8 +4,13 @@ from sqlalchemy import text
 from app.core.config import settings
 
 
+# Auto-convert scheme: Supabase/Render provide postgresql:// but asyncpg needs postgresql+asyncpg://
+_db_url = settings.DATABASE_URL
+if _db_url.startswith("postgresql://"):
+    _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    _db_url,
     echo=settings.APP_ENV == "development",
     pool_pre_ping=True,
     pool_size=10,
