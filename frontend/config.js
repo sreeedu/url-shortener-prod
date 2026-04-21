@@ -6,11 +6,11 @@
  * ────────────────────────────────────────────────────────────────── */
 window.Config = {
   // Backend base URL — no trailing slash
-  API_BASE: 'http://192.168.29.25:8001',
+  API_BASE: 'https://linkvault-api.onrender.com',
 
   // Short-URL base (usually same as API_BASE in Phase 1;
   // may differ in production if you serve the redirect on a CDN/subdomain)
-  SHORT_URL_BASE: 'http://192.168.29.25:8001',
+  SHORT_URL_BASE: 'https://linkvault-api.onrender.com',
 
   // App display name
   APP_NAME: 'LinkVault',

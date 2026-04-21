@@ -1,22 +1,25 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import text
-from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 from app.core.config import settings
 
 
 # ── Sanitise DATABASE_URL for asyncpg compatibility ──────────────────────────
 # 1. Supabase/Render provide postgresql:// — asyncpg needs postgresql+asyncpg://
 # 2. Supabase pooler URLs add ?pgbouncer=true which asyncpg rejects
+# NOTE: We avoid urllib.parse.urlparse because Python 3.14 added strict
+#       bracketed-netloc validation that crashes on Supabase passwords
+#       containing special characters.
 _db_url = settings.DATABASE_URL
 if _db_url.startswith("postgresql://"):
     _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 # Strip query params that asyncpg doesn't understand (pgbouncer, etc.)
-_parsed = urlparse(_db_url)
-_clean_qs = {k: v for k, v in parse_qs(_parsed.query).items()
-             if k not in ("pgbouncer", "prepared_statements")}
-_db_url = urlunparse(_parsed._replace(query=urlencode(_clean_qs, doseq=True)))
+_bad_params = ("pgbouncer", "prepared_statements")
+if "?" in _db_url:
+    _base, _qs = _db_url.split("?", 1)
+    _kept = [p for p in _qs.split("&") if p.split("=")[0] not in _bad_params]
+    _db_url = f"{_base}?{'&'.join(_kept)}" if _kept else _base
 
 # When using Supabase's PgBouncer (transaction mode), prepared statements
 # must be disabled on the asyncpg side as well.
