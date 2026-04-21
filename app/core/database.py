@@ -1,13 +1,28 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import text
+from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 from app.core.config import settings
 
 
-# Auto-convert scheme: Supabase/Render provide postgresql:// but asyncpg needs postgresql+asyncpg://
+# ── Sanitise DATABASE_URL for asyncpg compatibility ──────────────────────────
+# 1. Supabase/Render provide postgresql:// — asyncpg needs postgresql+asyncpg://
+# 2. Supabase pooler URLs add ?pgbouncer=true which asyncpg rejects
 _db_url = settings.DATABASE_URL
 if _db_url.startswith("postgresql://"):
     _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+# Strip query params that asyncpg doesn't understand (pgbouncer, etc.)
+_parsed = urlparse(_db_url)
+_clean_qs = {k: v for k, v in parse_qs(_parsed.query).items()
+             if k not in ("pgbouncer", "prepared_statements")}
+_db_url = urlunparse(_parsed._replace(query=urlencode(_clean_qs, doseq=True)))
+
+# When using Supabase's PgBouncer (transaction mode), prepared statements
+# must be disabled on the asyncpg side as well.
+_connect_args = {"command_timeout": settings.DB_QUERY_TIMEOUT}
+if "pgbouncer" in settings.DATABASE_URL:
+    _connect_args["prepared_statement_cache_size"] = 0
 
 engine = create_async_engine(
     _db_url,
@@ -16,9 +31,7 @@ engine = create_async_engine(
     pool_size=10,
     max_overflow=20,
     pool_recycle=3600,
-    # FIX: DB query timeout — prevents hung queries from holding connections
-    # forever and exhausting the pool under DB overload.
-    connect_args={"command_timeout": settings.DB_QUERY_TIMEOUT},
+    connect_args=_connect_args,
 )
 
 AsyncSessionLocal = async_sessionmaker(
